@@ -38,6 +38,7 @@ import org.apache.maven.model.Model;
 import org.apache.maven.model.Parent;
 import org.apache.maven.model.Repository;
 import org.apache.maven.model.io.xpp3.MavenXpp3Reader;
+import org.codehaus.plexus.interpolation.InterpolationException;
 import org.codehaus.plexus.interpolation.MapBasedValueSource;
 import org.codehaus.plexus.interpolation.RegexBasedInterpolator;
 import org.codehaus.plexus.util.xml.pull.XmlPullParserException;
@@ -100,6 +101,7 @@ public class MavenVerifier implements BuildSystemVerifier {
                             checkDependencyManagement(model, hostingIssues);
                             checkDevelopersTag(model, hostingIssues);
                             checkProperties(model, hostingIssues);
+                            checkUrl(model, hostingIssues);
                             if (issue.isEnableCD()) {
                                 checkAutomaticReleasesSettings(model, hostingIssues);
                             }
@@ -118,6 +120,25 @@ public class MavenVerifier implements BuildSystemVerifier {
                 hostingIssues.add(new VerificationMessage(
                         VerificationMessage.Severity.REQUIRED, HostingChecker.INVALID_FORK_FROM, forkFrom));
             }
+        }
+    }
+
+    private void checkUrl(Model model, HashSet<VerificationMessage> hostingIssues) {
+        Properties props = model.getProperties();
+        props.put("project.artifactId", model.getArtifactId());
+        RegexBasedInterpolator interpolator = new RegexBasedInterpolator();
+        interpolator.addValueSource(new MapBasedValueSource(props));
+        String url = model.getUrl();
+        try {
+            url = interpolator.interpolate(url);
+            if (!url.equals("https://github.com/jenkinsci/" + model.getArtifactId() + "-plugin")) {
+                hostingIssues.add(
+                        new VerificationMessage(
+                                VerificationMessage.Severity.REQUIRED,
+                                "The `<url>` field in the pom.xml should be `https://github.com/jenkinsci/${project.artifactId}-plugin`."));
+            }
+        } catch (InterpolationException e) {
+            LOGGER.warn("Failed to interpolate url", e);
         }
     }
 
@@ -549,6 +570,13 @@ public class MavenVerifier implements BuildSystemVerifier {
                     VerificationMessage.Severity.REQUIRED,
                     "Please define the property `ban-deprecated-stapler.skip` and set it to `false`. This should help prevent usage of deprecated stapler and javax.servlet classes."
                             + " included in core."));
+        }
+        if (!props.containsKey("ban-junit4-imports.skip")
+                || !props.getProperty("ban-junit4-imports.skip").equals("false")) {
+            hostingIssues.add(
+                    new VerificationMessage(
+                            VerificationMessage.Severity.REQUIRED,
+                            "Please define the property `ban-junit4-imports.skip` and set it to `false`. This should help prevent usage of deprecated junit 4 classes."));
         }
     }
 
